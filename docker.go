@@ -29,13 +29,6 @@ import (
 	"strings"
 )
 
-// DockerRequester defines necessary methods to access to docker.
-type DockerRequester interface {
-	GetID(name string) (res string, err error)
-	CreateContainer(image, name string, script []byte) (err error)
-	DeleteContainer(id string) error
-}
-
 // commandExecutor is a type of function takes command name and arguments,
 // and returns a pointer of exec.Cmd to be run a command.
 type commandExecutor func(string, ...string) *exec.Cmd
