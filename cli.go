@@ -25,7 +25,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"net/url"
+	"io/ioutil"
 	"os"
 	"path/filepath"
 
@@ -78,29 +78,24 @@ func (cli *CLI) Run(args []string) int {
 		return ExitCodeOK
 	}
 
-	if flags.NArg() != 1 {
-		fmt.Println("Usage: roadie-queue-manager <queue URL>")
+	if flags.NArg() != 2 {
+		fmt.Println("Usage: roadie-queue-manager <project-ID> <queue-name>")
 		return ExitCodeError
 	}
 
-	if err := run(flags.Arg(0)); err != nil {
+	if err := run(flags.Arg(0), flags.Arg(1)); err != nil {
 		fmt.Println(err.Error())
 		return ExitCodeError
 	}
 	return ExitCodeOK
 }
 
-func run(queue string) (err error) {
+func run(project, queue string) (err error) {
 
 	// Prepare the directory to store downloaded script files.
 	err = os.MkdirAll(ScriptDir, 0755)
 	if err != nil {
 		return
-	}
-
-	queueURL, err := url.Parse(queue)
-	if err != nil {
-		return err
 	}
 
 	ctx := context.Background()
@@ -127,31 +122,24 @@ func run(queue string) (err error) {
 	// Start checking queue and executing each script.
 	for {
 
-		// Create an accessor to cloud storage.
-		s, err := NewStorage(ctx)
-		if err != nil {
-			return err
-		}
+		var path string
 
-		// Search the oldest item in the queue.
-		target, err := s.NextScript(queueURL)
-		if err != nil {
-			return err
-		}
-		if target == nil {
-			// There are no script, end this loop.
+		// Obtain a next script.
+		err = NextScript(ctx, project, queue, func(script *QueuedScript) error {
+			// This handler stores a given script into a file
+			// so that if this program will be stopped accidentaly,
+			// the given script won't be lost.
+			raw, err2 := script.Bytes()
+			if err2 != nil {
+				return err2
+			}
+			path = filepath.Join(ScriptDir, script.InstanceName, ".yml")
+			return ioutil.WriteFile(path, raw, 0644)
+
+		})
+		if err == NoScript {
 			break
-		}
-
-		// Download the oldest item.
-		path := filepath.Join(ScriptDir, filepath.Base(target.Name))
-		err = s.Download(target, path)
-		if err != nil {
-			return err
-		}
-		// Delete it here.
-		err = s.Delete(target)
-		if err != nil {
+		} else if err != nil {
 			return err
 		}
 
