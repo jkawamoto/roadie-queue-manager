@@ -70,6 +70,9 @@ func NextScript(ctx context.Context, project, queue string, handler ScriptHandle
 		// There are no items in the given queue.
 		trans.Commit()
 		return nil
+	} else if err != nil {
+		trans.Rollback()
+		return err
 	}
 
 	// Delete a recieved script from the queue.
