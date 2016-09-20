@@ -74,3 +74,10 @@ func (q *QueuedScript) ScriptBody() ([]byte, error) {
 	return yaml.Marshal(q.Body)
 
 }
+
+// Bytes returns the YAML presentation of this object.
+func (q *QueuedScript) Bytes() ([]byte, error) {
+
+	return yaml.Marshal(q)
+
+}

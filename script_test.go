@@ -118,3 +118,20 @@ func TestScriptBody(t *testing.T) {
 	}
 
 }
+
+// TestBytes tests Bytes method returns a correct YAML representation.
+func TestBytes(t *testing.T) {
+
+	res, err := sampleScript.Bytes()
+	if err != nil {
+		t.Error("Bytes returns an errror:", err.Error())
+	}
+	expected, err := yaml.Marshal(sampleScript)
+	if err != nil {
+		t.Fatal(err.Error())
+	}
+	if string(res) != string(expected) {
+		t.Error("Bytes returns a wrong YAML representation:", string(res))
+	}
+
+}
