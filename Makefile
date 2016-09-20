@@ -29,3 +29,11 @@ build:
 .PHONY: release
 release:
 	ghr  -u jkawamoto  v$(VERSION) pkg/$(VERSION)
+
+.PHONY: get-deps
+get-deps:
+  go get -d -t -v .
+
+.PHONY: test
+test: asset
+	go test -v ./...
