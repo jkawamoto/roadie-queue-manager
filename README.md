@@ -4,7 +4,7 @@
 [![Code Climate](https://codeclimate.com/github/jkawamoto/roadie-queue-manager/badges/gpa.svg)](https://codeclimate.com/github/jkawamoto/roadie-queue-manager)
 [![Release](https://img.shields.io/badge/release-0.1.0-brightgreen.svg)](https://github.com/jkawamoto/roadie/releases/tag/v0.1.0)
 
-A helper tool to execute your scripts with Queue.
+A helper tool of Roadie to execute your scripts with a queue.
 
 ## Description
 Roadie Queue Manager is a helper tool of [Roadie](https://jkawamoto.github.io/roadie/).
