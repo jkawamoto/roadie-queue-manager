@@ -68,8 +68,8 @@ func NewQueuedScript(file string) (script *QueuedScript, err error) {
 
 }
 
-// Script returns the script body of this queued script.
-func (q *QueuedScript) Script() ([]byte, error) {
+// ScriptBody returns the script body of this queued script.
+func (q *QueuedScript) ScriptBody() ([]byte, error) {
 
 	return yaml.Marshal(q.Body)
 

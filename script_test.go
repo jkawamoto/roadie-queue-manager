@@ -102,10 +102,10 @@ func TestNewQueuedScript(t *testing.T) {
 
 }
 
-// TestScript tests generated scripts have correct values.
-func TestScript(t *testing.T) {
+// TestScriptBody tests generated scripts have correct values.
+func TestScriptBody(t *testing.T) {
 
-	raw, err := sampleScript.Script()
+	raw, err := sampleScript.ScriptBody()
 	if err != nil {
 		t.Fatal(err.Error())
 	}
