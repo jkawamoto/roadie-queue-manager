@@ -22,17 +22,15 @@
 package main
 
 import (
-	"bufio"
 	"flag"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net/url"
-	"strings"
-	"time"
+	"os"
+	"path/filepath"
 
 	"golang.org/x/net/context"
-	"golang.org/x/oauth2/google"
+
 	storage "google.golang.org/api/storage/v1"
 )
 
@@ -45,6 +43,9 @@ const (
 
 	// TimeFormat: 2016-07-08T02:05:14.446Z
 	TimeFormat = "2006-01-02T15:04:05"
+
+	// ScriptDir is the directory downloaded script file are stored.
+	ScriptDir = "script"
 )
 
 // CLI is the command line object
@@ -89,7 +90,13 @@ func (cli *CLI) Run(args []string) int {
 	return ExitCodeOK
 }
 
-func run(queue string) error {
+func run(queue string) (err error) {
+
+	// Prepare the directory to store downloaded script files.
+	err = os.MkdirAll(ScriptDir, 0755)
+	if err != nil {
+		return
+	}
 
 	queueURL, err := url.Parse(queue)
 	if err != nil {
@@ -97,55 +104,110 @@ func run(queue string) error {
 	}
 
 	ctx := context.Background()
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
 
-	// Create a client.
-	client, err := google.DefaultClient(ctx, gcsScope)
+	// Docker accessor.
+	docker := NewDocker()
+
+	// Check a script file exists.
+	// If there are script files, it measn VM was restarted during the run.
+	// The script file must be restarted.
+	matches, err := filepath.Glob(filepath.Join(ScriptDir, "*.yml"))
 	if err != nil {
-		return err
+		return
 	}
-	// Create a servicer.
-	service, err := storage.New(client)
-	if err != nil {
-		return err
-	}
-
-	// Search the oldest item in the queue.
-	res, err := service.Objects.List(queueURL.Host).Prefix(queueURL.Path[1:]).Do()
-	if err != nil {
-		return err
+	for _, file := range matches {
+		err = executeScript(docker, file)
+		if err != nil {
+			return
+		}
 	}
 
-	var target *storage.Object
-	var targetTime time.Time
-	for _, item := range res.Items {
-		t, _ := time.Parse(TimeFormat, strings.Split(item.TimeCreated, ".")[0])
+	// Start checking queue and executing each script.
+	for {
 
-		if targetTime.IsZero() || targetTime.After(t) {
-			target = item
-			targetTime = t
+		// Create an accessor to cloud storage.
+		s, err := NewStorage(ctx)
+		if err != nil {
+			return err
+		}
+
+		// Search the oldest item in the queue.
+		target, err := s.NextScript(queueURL)
+		if err != nil {
+			return err
+		}
+		if target == nil {
+			// There are no script, end this loop.
+			break
+		}
+
+		// Download the oldest item.
+		path := filepath.Join(ScriptDir, filepath.Base(target.Name))
+		err = s.Download(target, path)
+		if err != nil {
+			return err
+		}
+		// Delete it here.
+		err = s.Delete(target)
+		if err != nil {
+			return err
+		}
+
+		// Execute a script.
+		err = executeScript(docker, path)
+		if err != nil {
+			return err
 		}
 
 	}
 
-	// Download the oldest item.
-	res2, err := service.Objects.Get(queueURL.Host, target.Name).Download()
-	if err != nil {
-		return err
-	}
-	defer res2.Body.Close()
-
-	fp, err := ioutil.TempFile(".", "test")
-	if err != nil {
-		return err
-	}
-	defer fp.Close()
-
-	reader := bufio.NewReader(res2.Body)
-	_, err = reader.WriteTo(fp)
-	if err != nil {
-		return err
-	}
-
 	return nil
+
+}
+
+// DockerRequester defines necessary methods to access to docker.
+type DockerRequester interface {
+	GetID(name string) (res string, err error)
+	CreateContainer(image, name string, script []byte) error
+	DeleteContainer(id string) error
+}
+
+// executeScript runs a given script via a given docker interface.
+// When the script ends without errors, the script file will be deleted.
+func executeScript(docker DockerRequester, file string) (err error) {
+
+	// Parse the script.
+	script, err := NewQueuedScript(file)
+	if err != nil {
+		return
+	}
+
+	// Check a previous container exists.
+	id, err := docker.GetID(script.InstanceName)
+	if err != nil {
+		return
+	}
+	if len(id) != 0 {
+		// If samne name container exists, delete it.
+		err = docker.DeleteContainer(id)
+		if err != nil {
+			return
+		}
+	}
+
+	// Start a new container.
+	body, err := script.ScriptBody()
+	if err != nil {
+		return
+	}
+	err = docker.CreateContainer(script.Image, script.InstanceName, body)
+	if err != nil {
+		return
+	}
+
+	// Delete the script file.
+	return os.Remove(file)
 
 }
