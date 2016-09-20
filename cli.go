@@ -5,7 +5,7 @@
 //
 // This file is part of Roadie queue manager.
 //
-// Roadie is free software: you can redistribute it and/or modify
+// Roadie Queue Manager  is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
 // the Free Software Foundation, either version 3 of the License, or
 // (at your option) any later version.
@@ -22,17 +22,15 @@
 package main
 
 import (
-	"bufio"
 	"flag"
 	"fmt"
 	"io"
 	"io/ioutil"
-	"net/url"
-	"strings"
-	"time"
+	"os"
+	"path/filepath"
 
 	"golang.org/x/net/context"
-	"golang.org/x/oauth2/google"
+
 	storage "google.golang.org/api/storage/v1"
 )
 
@@ -45,6 +43,9 @@ const (
 
 	// TimeFormat: 2016-07-08T02:05:14.446Z
 	TimeFormat = "2006-01-02T15:04:05"
+
+	// ScriptDir is the directory downloaded script file are stored.
+	ScriptDir = "script"
 )
 
 // CLI is the command line object
@@ -77,75 +78,124 @@ func (cli *CLI) Run(args []string) int {
 		return ExitCodeOK
 	}
 
-	if flags.NArg() != 1 {
-		fmt.Println("Usage: roadie-queue-manager <queue URL>")
+	if flags.NArg() != 2 {
+		fmt.Println("Usage: roadie-queue-manager <project-ID> <queue-name>")
 		return ExitCodeError
 	}
 
-	if err := run(flags.Arg(0)); err != nil {
+	if err := run(flags.Arg(0), flags.Arg(1)); err != nil {
 		fmt.Println(err.Error())
 		return ExitCodeError
 	}
 	return ExitCodeOK
 }
 
-func run(queue string) error {
+func run(project, queue string) (err error) {
 
-	queueURL, err := url.Parse(queue)
+	// Prepare the directory to store downloaded script files.
+	err = os.MkdirAll(ScriptDir, 0755)
 	if err != nil {
-		return err
+		return
 	}
 
 	ctx := context.Background()
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
 
-	// Create a client.
-	client, err := google.DefaultClient(ctx, gcsScope)
+	// Docker accessor.
+	docker := NewDocker()
+
+	// Check a script file exists.
+	// If there are script files, it measn VM was restarted during the run.
+	// The script file must be restarted.
+	matches, err := filepath.Glob(filepath.Join(ScriptDir, "*.yml"))
 	if err != nil {
-		return err
+		return
 	}
-	// Create a servicer.
-	service, err := storage.New(client)
-	if err != nil {
-		return err
-	}
-
-	// Search the oldest item in the queue.
-	res, err := service.Objects.List(queueURL.Host).Prefix(queueURL.Path[1:]).Do()
-	if err != nil {
-		return err
+	for _, file := range matches {
+		err = executeScript(docker, file)
+		if err != nil {
+			return
+		}
 	}
 
-	var target *storage.Object
-	var targetTime time.Time
-	for _, item := range res.Items {
-		t, _ := time.Parse(TimeFormat, strings.Split(item.TimeCreated, ".")[0])
+	// Start checking queue and executing each script.
+	for {
 
-		if targetTime.IsZero() || targetTime.After(t) {
-			target = item
-			targetTime = t
+		var path string
+
+		// Obtain a next script.
+		err = NextScript(ctx, project, queue, func(script *QueuedScript) error {
+			// This handler stores a given script into a file
+			// so that if this program will be stopped accidentaly,
+			// the given script won't be lost.
+			raw, err2 := script.Bytes()
+			if err2 != nil {
+				return err2
+			}
+			path = filepath.Join(ScriptDir, script.InstanceName, ".yml")
+			return ioutil.WriteFile(path, raw, 0644)
+
+		})
+		if err == NoScript {
+			break
+		} else if err != nil {
+			return err
+		}
+
+		// Execute a script.
+		err = executeScript(docker, path)
+		if err != nil {
+			return err
 		}
 
 	}
 
-	// Download the oldest item.
-	res2, err := service.Objects.Get(queueURL.Host, target.Name).Download()
-	if err != nil {
-		return err
-	}
-	defer res2.Body.Close()
-
-	fp, err := ioutil.TempFile(".", "test")
-	if err != nil {
-		return err
-	}
-	defer fp.Close()
-
-	reader := bufio.NewReader(res2.Body)
-	_, err = reader.WriteTo(fp)
-	if err != nil {
-		return err
-	}
-
 	return nil
+
+}
+
+// DockerRequester defines necessary methods to access to docker.
+type DockerRequester interface {
+	GetID(name string) (res string, err error)
+	CreateContainer(image, name string, script []byte) error
+	DeleteContainer(id string) error
+}
+
+// executeScript runs a given script via a given docker interface.
+// When the script ends without errors, the script file will be deleted.
+func executeScript(docker DockerRequester, file string) (err error) {
+
+	// Parse the script.
+	script, err := NewQueuedScript(file)
+	if err != nil {
+		return
+	}
+
+	// Check a previous container exists.
+	id, err := docker.GetID(script.InstanceName)
+	if err != nil {
+		return
+	}
+	if len(id) != 0 {
+		// If samne name container exists, delete it.
+		err = docker.DeleteContainer(id)
+		if err != nil {
+			return
+		}
+	}
+
+	// Start a new container.
+	body, err := script.ScriptBody()
+	if err != nil {
+		return
+	}
+	err = docker.CreateContainer(script.Image, script.InstanceName, body)
+	if err != nil {
+		return
+	}
+
+	// Delete the script file.
+	return os.Remove(file)
 
 }
