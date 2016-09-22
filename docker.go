@@ -24,7 +24,8 @@ package main
 import (
 	"bufio"
 	"fmt"
-	"io/ioutil"
+	"io"
+	"os"
 	"os/exec"
 	"strings"
 )
@@ -52,24 +53,20 @@ func (docker *Docker) GetID(name string) (res string, err error) {
 
 	// docker ps -aq -f name=<name>
 	cmd := docker.command("docker", "ps", "-aq", "-f", fmt.Sprintf("name=%s", name))
-	output, err := cmd.StdoutPipe()
+	stderr, err := cmd.StderrPipe()
 	if err != nil {
 		return
 	}
-	defer output.Close()
+	go func() {
+		io.Copy(os.Stderr, stderr)
+	}()
 
-	err = cmd.Start()
+	buf, err := cmd.Output()
 	if err != nil {
 		return
 	}
 
-	buf, err := ioutil.ReadAll(output)
-	if err != nil {
-		return
-	}
 	res = strings.TrimRight(string(buf), "\n")
-
-	err = cmd.Wait()
 	return
 
 }
@@ -85,6 +82,23 @@ func (docker *Docker) CreateContainer(image, name string, script []byte) (err er
 	if err != nil {
 		return
 	}
+
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return
+	}
+	go func() {
+		io.Copy(os.Stdout, stdout)
+	}()
+
+	stderr, err := cmd.StderrPipe()
+	if err != nil {
+		return
+	}
+	go func() {
+		io.Copy(os.Stderr, stderr)
+	}()
+
 	writer := bufio.NewWriter(stdin)
 
 	err = cmd.Start()
@@ -110,10 +124,12 @@ func (docker *Docker) CreateContainer(image, name string, script []byte) (err er
 }
 
 // DeleteContainer deletes a container associated with a given ID or name.
-func (docker *Docker) DeleteContainer(id string) error {
+func (docker *Docker) DeleteContainer(id string) (err error) {
 
 	// docker run -f <id>
 	cmd := docker.command("docker", "rm", "-f", id)
-	return cmd.Run()
+	output, err := cmd.Output()
+	os.Stdout.Write(output)
+	return err
 
 }
