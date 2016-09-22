@@ -29,6 +29,10 @@ import (
 	"os"
 	"path/filepath"
 
+	yaml "gopkg.in/yaml.v2"
+
+	"github.com/jkawamoto/roadie/command/resource"
+
 	"golang.org/x/net/context"
 
 	storage "google.golang.org/api/storage/v1"
@@ -98,8 +102,7 @@ func run(project, queue string) (err error) {
 		return
 	}
 
-	ctx := context.Background()
-	ctx, cancel := context.WithCancel(ctx)
+	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	// Docker accessor.
@@ -122,21 +125,23 @@ func run(project, queue string) (err error) {
 	// Start checking queue and executing each script.
 	for {
 
+		//File path to be run.
 		var path string
 
 		// Obtain a next script.
-		err = NextScript(ctx, project, queue, func(script *QueuedScript) error {
+		err = NextScript(ctx, project, queue, func(task *resource.Task) (err error) {
 			// This handler stores a given script into a file
 			// so that if this program will be stopped accidentaly,
 			// the given script won't be lost.
-			raw, err2 := script.Bytes()
-			if err2 != nil {
-				return err2
+			raw, err := yaml.Marshal(task)
+			if err != nil {
+				return
 			}
-			path = filepath.Join(ScriptDir, script.InstanceName, ".yml")
+			path = filepath.Join(ScriptDir, fmt.Sprintf("%s.yml", task.InstanceName))
 			return ioutil.WriteFile(path, raw, 0644)
 
 		})
+
 		if err == NoScript {
 			break
 		} else if err != nil {
@@ -167,7 +172,13 @@ type DockerRequester interface {
 func executeScript(docker DockerRequester, file string) (err error) {
 
 	// Parse the script.
-	script, err := NewQueuedScript(file)
+	raw, err := ioutil.ReadFile(file)
+	if err != nil {
+		return
+	}
+
+	var script resource.Task
+	err = yaml.Unmarshal(raw, &script)
 	if err != nil {
 		return
 	}
@@ -186,7 +197,7 @@ func executeScript(docker DockerRequester, file string) (err error) {
 	}
 
 	// Start a new container.
-	body, err := script.ScriptBody()
+	body, err := yaml.Marshal(&script.Body)
 	if err != nil {
 		return
 	}

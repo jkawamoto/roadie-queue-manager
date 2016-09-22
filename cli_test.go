@@ -29,6 +29,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/jkawamoto/roadie/command/resource"
+
 	yaml "gopkg.in/yaml.v2"
 )
 
@@ -55,10 +57,10 @@ const (
 	createContainer
 )
 
-var scriptTestExecuteScript = &QueuedScript{
+var scriptTestExecuteScript = &resource.Task{
 	InstanceName: "instance-1",
 	Image:        "roadie-base-image",
-	Body: ScriptBody{
+	Body: resource.ScriptBody{
 		APT: []string{
 			"python-numpy",
 			"python-scipy",
@@ -193,8 +195,8 @@ func TestExecuteScriptWithExistingContainer(t *testing.T) {
 
 	docker = &mockDockerRequester{
 		containerID:   "asdfghjkl",
-		image:         sampleScript.Image,
-		containerName: sampleScript.InstanceName,
+		image:         scriptTestExecuteScript.Image,
+		containerName: scriptTestExecuteScript.InstanceName,
 	}
 	err = executeScript(docker, fp.Name())
 	if err != nil {
@@ -227,8 +229,8 @@ func TestExecuteScriptWithoutExistingContainer(t *testing.T) {
 		t.Fatal(err.Error())
 	}
 	docker = &mockDockerRequester{
-		image:         sampleScript.Image,
-		containerName: sampleScript.InstanceName,
+		image:         scriptTestExecuteScript.Image,
+		containerName: scriptTestExecuteScript.InstanceName,
 	}
 	err = executeScript(docker, fp.Name())
 	if err != nil {
