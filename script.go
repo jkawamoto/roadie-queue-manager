@@ -51,6 +51,18 @@ type QueuedScript struct {
 	Image string `yaml:"image,omitempty"`
 	// The script body.
 	Body ScriptBody `yaml:"body,omitempty"`
+
+	//TODO:
+	// queue should be distinguished via property value not kind.
+	// because listing up kinds are difficult.
+	QueueName string
+
+	// If true, NextQueuedScript will skip this script.
+	// In order to stop a queue, this flag will be used.
+	Pending bool
+
+	// Is this field necessary?
+	// Time int64
 }
 
 // NewQueuedScript reads a file associated with a given file name and returns
