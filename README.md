@@ -18,4 +18,4 @@ roadie-queue-manager <project ID> <queue name>
 
 ## License
 This software is released under The GNU General Public License Version 3,
-see [COPYING](COPYING) for more detail.
+see [COPYING](COPYING) and [LICENSES](LICENSES.md) for more detail.
