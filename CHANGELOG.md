@@ -1,3 +1,7 @@
+## 0.1.3 (2017-01-10)
+### Update
+- To use newer datastore APIs.
+
 ## 0.1.2 (2016-09-22)
 ### Update
 - For the new roadie's queue APIs.
