@@ -1,7 +1,7 @@
 //
 // datastore.go
 //
-// Copyright (c) 2016 Junpei Kawamoto
+// Copyright (c) 2016-2017 Junpei Kawamoto
 //
 // This file is part of Roadie queue manager.
 //
@@ -22,13 +22,15 @@
 package main
 
 import (
+	"context"
 	"fmt"
+
+	"google.golang.org/api/iterator"
 
 	"github.com/jkawamoto/roadie/command/cloud"
 	"github.com/jkawamoto/roadie/command/resource"
 
 	"cloud.google.com/go/datastore"
-	"golang.org/x/net/context"
 )
 
 // NoScript is an error type which represents there are no scripts in a queue.
@@ -56,7 +58,7 @@ func NextScript(ctx context.Context, project, queue string, handler func(*resour
 
 		var res resource.Task
 		key, err := iter.Next(&res)
-		if err == datastore.Done {
+		if err == iterator.Done {
 			// There are no items in the given queue.
 			return NoScript
 		} else if err != nil {

@@ -1,7 +1,7 @@
 //
 // cli.go
 //
-// Copyright (c) 2016 Junpei Kawamoto
+// Copyright (c) 2016-2017 Junpei Kawamoto
 //
 // This file is part of Roadie queue manager.
 //
@@ -22,6 +22,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"io"
@@ -32,18 +33,12 @@ import (
 	yaml "gopkg.in/yaml.v2"
 
 	"github.com/jkawamoto/roadie/command/resource"
-
-	"golang.org/x/net/context"
-
-	storage "google.golang.org/api/storage/v1"
 )
 
 // Exit codes are int values that represent an exit code for a particular error.
 const (
 	ExitCodeOK    int = 0
 	ExitCodeError int = 1 + iota
-
-	gcsScope = storage.DevstorageFullControlScope
 
 	// TimeFormat: 2016-07-08T02:05:14.446Z
 	TimeFormat = "2006-01-02T15:04:05"
