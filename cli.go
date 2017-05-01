@@ -30,6 +30,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/jkawamoto/roadie/cloud/gce"
 	"github.com/jkawamoto/roadie/script"
@@ -99,22 +100,38 @@ func run(queue string) (err error) {
 
 	projectID, err := ProjectID(ctx)
 	if err != nil {
+		logger.Println("Cannot retrieve the project ID:", err.Error())
 		return
 	}
 
 	defer func() (err error) {
-		instanceID, err := InstanceID(ctx)
+
+		// The context used in this function may be canceled when the following defer
+		// function is called; a new background context is thereby used here.
+		nctx := context.Background()
+		hostname, err := Hostname(nctx)
 		if err != nil {
+			logger.Println("Cannot retrieve the hostname and stop this instace:", err.Error())
 			return
 		}
+		zone, err := Zone(nctx)
+		if err != nil {
+			logger.Println("Cannot retrieve zone name and stop this instance:", err.Error())
+			return
+		}
+		instanceID := strings.Split(hostname, ".")[0]
 
 		logger.Println("Deleting instance", instanceID)
 		cService := gce.NewComputeService(&gce.GcpConfig{
 			Project: projectID,
+			Zone:    zone,
 		}, logger)
-		// The context used in this function may be canceled when the following defer
-		// function is called; a new background context is thereby used here.
-		return cService.DeleteInstance(context.Background(), instanceID)
+		err = cService.DeleteInstance(nctx, instanceID)
+		if err != nil {
+			logger.Println("Cannot stop instance", instanceID, ":", err.Error())
+		}
+		return
+
 	}()
 
 	// Check a script file exists.

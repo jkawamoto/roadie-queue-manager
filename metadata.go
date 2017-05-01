@@ -34,6 +34,10 @@ const (
 	ProjectIDMetadataURL = "http://metadata.google.internal/computeMetadata/v1/project/project-id"
 	// InstanceIDMetadataURL defines a metadata URL of the instance ID.
 	InstanceIDMetadataURL = "http://metadata.google.internal/computeMetadata/v1/instance/id"
+	// HostnameMetadataURL defines a matadata URL of the hostname.
+	HostnameMetadataURL = "http://metadata.google.internal/computeMetadata/v1/instance/hostname"
+	// ZoneMetadataURL defines a metadata URL of the zone this instance running.
+	ZoneMetadataURL = "http://metadata.google.internal/computeMetadata/v1/instance/zone"
 )
 
 func getMetadata(ctx context.Context, url string) (str string, err error) {
@@ -59,11 +63,21 @@ func getMetadata(ctx context.Context, url string) (str string, err error) {
 }
 
 // ProjectID returns the project ID this instance belonging to.
-func ProjectID(ctx context.Context) (id string, err error) {
+func ProjectID(ctx context.Context) (string, error) {
 	return getMetadata(ctx, ProjectIDMetadataURL)
 }
 
 // InstanceID returns the ID of this instance.
-func InstanceID(ctx context.Context) (id string, err error) {
+func InstanceID(ctx context.Context) (string, error) {
 	return getMetadata(ctx, InstanceIDMetadataURL)
+}
+
+// Hostname returns the host name of this instance.
+func Hostname(ctx context.Context) (string, error) {
+	return getMetadata(ctx, HostnameMetadataURL)
+}
+
+// Zone returns the zone name this instance running in.
+func Zone(ctx context.Context) (string, error) {
+	return getMetadata(ctx, ZoneMetadataURL)
 }
