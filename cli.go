@@ -16,7 +16,7 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with Foobar.  If not, see <http://www.gnu.org/licenses/>.
+// along with Roadie queue manager. If not, see <http://www.gnu.org/licenses/>.
 //
 
 package main
@@ -27,12 +27,15 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"log"
 	"os"
 	"path/filepath"
+	"strings"
+
+	"github.com/jkawamoto/roadie/cloud/gce"
+	"github.com/jkawamoto/roadie/script"
 
 	yaml "gopkg.in/yaml.v2"
-
-	"github.com/jkawamoto/roadie/command/resource"
 )
 
 // Exit codes are int values that represent an exit code for a particular error.
@@ -44,7 +47,7 @@ const (
 	TimeFormat = "2006-01-02T15:04:05"
 
 	// ScriptDir is the directory downloaded script file are stored.
-	ScriptDir = "script"
+	ScriptDir = "/root"
 )
 
 // CLI is the command line object
@@ -78,7 +81,7 @@ func (cli *CLI) Run(args []string) int {
 	}
 
 	if flags.NArg() != 2 {
-		fmt.Println("Usage: roadie-queue-manager <project-ID> <queue-name>")
+		fmt.Println("Usage: roadie-queue-manager <project id> <queue name>")
 		return ExitCodeError
 	}
 
@@ -90,118 +93,115 @@ func (cli *CLI) Run(args []string) int {
 }
 
 func run(project, queue string) (err error) {
+	logger := log.New(os.Stdout, "", 0)
 
-	// Prepare the directory to store downloaded script files.
-	err = os.MkdirAll(ScriptDir, 0755)
-	if err != nil {
+	defer func() (err error) {
+
+		// The context used in this function may be canceled when the following defer
+		// function is called; a new background context is thereby used here.
+		ctx := context.Background()
+		hostname, err := Hostname(ctx)
+		if err != nil {
+			logger.Println("Cannot retrieve the hostname and stop this instace:", err.Error())
+			return
+		}
+		zone, err := Zone(ctx)
+		if err != nil {
+			logger.Println("Cannot retrieve zone name and stop this instance:", err.Error())
+			return
+		}
+		instanceID := strings.Split(hostname, ".")[0]
+
+		cService := gce.NewComputeService(&gce.GcpConfig{
+			Project: project,
+			Zone:    zone,
+		}, logger)
+		err = cService.DeleteInstance(ctx, instanceID)
+		if err != nil {
+			logger.Println("Cannot stop instance", instanceID, ":", err.Error())
+			logger.Println("(project =", project, ", zone =", zone, ")")
+		}
 		return
-	}
+
+	}()
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	// Docker accessor.
-	docker := NewDocker()
-
 	// Check a script file exists.
 	// If there are script files, it measn VM was restarted during the run.
 	// The script file must be restarted.
+	logger.Println("Checking unfinished tasks")
 	matches, err := filepath.Glob(filepath.Join(ScriptDir, "*.yml"))
 	if err != nil {
-		return
-	}
-	for _, file := range matches {
-		err = executeScript(docker, file)
-		if err != nil {
-			return
+		logger.Println("Failed retrieving unfinished tasks:", err.Error())
+
+	} else {
+
+		for _, filename := range matches {
+			logger.Println("Find an unfinished task", filename, "and run it again")
+
+			var s *script.Script
+			s, err = script.NewScript(filename)
+			if err != nil {
+				logger.Println("Cannot read", filename, "and skip it:", err.Error())
+				continue
+			}
+
+			err = ExecuteScript(ctx, s, logger)
+			if err != nil {
+				logger.Println("Cannot finish task", filename, ":", err.Error())
+				continue
+			}
+			os.Remove(filename)
+
 		}
+
 	}
 
 	// Start checking queue and executing each script.
+	logger.Println("Requesting a task from queue", queue)
+	qService, err := gce.NewQueueService(ctx, &gce.GcpConfig{
+		Project: project,
+	}, logger)
+	if err != nil {
+		logger.Println("Cannot create a queue service:", err.Error())
+		return
+	}
+
+	var task *gce.Task
 	for {
+		task, err = qService.Fetch(ctx, queue)
+		if err != nil {
+			logger.Println("Cannot fetch any tasks:", err.Error())
+			return
+		} else if task == nil {
+			return
+		}
 
-		//File path to be run.
-		var path string
+		logger.Println("Recieved a task", task.Name, "from queue", queue)
 
-		// Obtain a next script.
-		err = NextScript(ctx, project, queue, func(task *resource.Task) (err error) {
-			// This handler stores a given script into a file
-			// so that if this program will be stopped accidentaly,
-			// the given script won't be lost.
-			raw, err := yaml.Marshal(task)
+		// Store a given script into a file so that if this program will be stopped accidentaly,
+		// the given script won't be lost.
+		var raw []byte
+		raw, err = yaml.Marshal(task.Script)
+		if err != nil {
+			logger.Println("Cannot marshal the task", task.Name, "but can continue processing:", err.Error())
+		} else {
+			path := filepath.Join(ScriptDir, fmt.Sprintf("%s.yml", task.Name))
+			err = ioutil.WriteFile(path, raw, 0644)
 			if err != nil {
-				return
+				logger.Println("Cannot store the task", task.Name, "but can continue processing:", err.Error())
 			}
-			path = filepath.Join(ScriptDir, fmt.Sprintf("%s.yml", task.InstanceName))
-			return ioutil.WriteFile(path, raw, 0644)
-
-		})
-
-		if err == NoScript {
-			break
-		} else if err != nil {
-			return err
 		}
 
 		// Execute a script.
-		err = executeScript(docker, path)
+		err = ExecuteScript(ctx, task.Script, log.New(os.Stdout, fmt.Sprintf("task-%v:", task.Name), 0))
 		if err != nil {
-			return err
+			logger.Println("Failed to execute task", task.Name, ":", err.Error())
 		}
+		qService.DeleteTask(ctx, queue, task.Name)
 
 	}
-
-	return nil
-
-}
-
-// DockerRequester defines necessary methods to access to docker.
-type DockerRequester interface {
-	GetID(name string) (res string, err error)
-	CreateContainer(image, name string, script []byte) error
-	DeleteContainer(id string) error
-}
-
-// executeScript runs a given script via a given docker interface.
-// When the script ends without errors, the script file will be deleted.
-func executeScript(docker DockerRequester, file string) (err error) {
-
-	// Parse the script.
-	raw, err := ioutil.ReadFile(file)
-	if err != nil {
-		return
-	}
-
-	var script resource.Task
-	err = yaml.Unmarshal(raw, &script)
-	if err != nil {
-		return
-	}
-
-	// Check a previous container exists.
-	id, err := docker.GetID(script.InstanceName)
-	if err != nil {
-		return
-	}
-	if len(id) != 0 {
-		// If samne name container exists, delete it.
-		err = docker.DeleteContainer(id)
-		if err != nil {
-			return
-		}
-	}
-
-	// Start a new container.
-	body, err := yaml.Marshal(&script.Body)
-	if err != nil {
-		return
-	}
-	err = docker.CreateContainer(script.Image, script.InstanceName, body)
-	if err != nil {
-		return
-	}
-
-	// Delete the script file.
-	return os.Remove(file)
 
 }
