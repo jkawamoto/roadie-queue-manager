@@ -80,41 +80,32 @@ func (cli *CLI) Run(args []string) int {
 		return ExitCodeOK
 	}
 
-	if flags.NArg() != 1 {
-		fmt.Println("Usage: roadie-queue-manager <queue-name>")
+	if flags.NArg() != 2 {
+		fmt.Println("Usage: roadie-queue-manager <project id> <queue name>")
 		return ExitCodeError
 	}
 
-	if err := run(flags.Arg(0)); err != nil {
+	if err := run(flags.Arg(0), flags.Arg(1)); err != nil {
 		fmt.Println(err.Error())
 		return ExitCodeError
 	}
 	return ExitCodeOK
 }
 
-func run(queue string) (err error) {
+func run(project, queue string) (err error) {
 	logger := log.New(os.Stdout, "", 0)
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	projectID, err := ProjectID(ctx)
-	if err != nil {
-		logger.Println("Cannot retrieve the project ID:", err.Error())
-		return
-	}
 
 	defer func() (err error) {
 
 		// The context used in this function may be canceled when the following defer
 		// function is called; a new background context is thereby used here.
-		nctx := context.Background()
-		hostname, err := Hostname(nctx)
+		ctx := context.Background()
+		hostname, err := Hostname(ctx)
 		if err != nil {
 			logger.Println("Cannot retrieve the hostname and stop this instace:", err.Error())
 			return
 		}
-		zone, err := Zone(nctx)
+		zone, err := Zone(ctx)
 		if err != nil {
 			logger.Println("Cannot retrieve zone name and stop this instance:", err.Error())
 			return
@@ -123,10 +114,10 @@ func run(queue string) (err error) {
 
 		logger.Println("Deleting instance", instanceID)
 		cService := gce.NewComputeService(&gce.GcpConfig{
-			Project: projectID,
+			Project: project,
 			Zone:    zone,
 		}, logger)
-		err = cService.DeleteInstance(nctx, instanceID)
+		err = cService.DeleteInstance(ctx, instanceID)
 		if err != nil {
 			logger.Println("Cannot stop instance", instanceID, ":", err.Error())
 		}
@@ -134,9 +125,13 @@ func run(queue string) (err error) {
 
 	}()
 
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
 	// Check a script file exists.
 	// If there are script files, it measn VM was restarted during the run.
 	// The script file must be restarted.
+	logger.Println("Checking unfinished tasks")
 	matches, err := filepath.Glob(filepath.Join(ScriptDir, "*.yml"))
 	if err != nil {
 		logger.Println("Failed retrieving unfinished tasks:", err.Error())
@@ -165,37 +160,49 @@ func run(queue string) (err error) {
 	}
 
 	// Start checking queue and executing each script.
-	err = RecieveTask(ctx, projectID, queue, func(task *script.Script) (err error) {
-		logger.Println("Recieved a task", task.InstanceName, "from queue", queue)
+	logger.Println("Requesting a task from queue", queue)
+	qService, err := gce.NewQueueService(ctx, &gce.GcpConfig{
+		Project: project,
+	}, logger)
+	if err != nil {
+		logger.Println("Cannot create a queue service:", err.Error())
+		return
+	}
 
-		// This handler stores a given script into a file
-		// so that if this program will be stopped accidentaly,
-		// the given script won't be lost.
-		raw, err := yaml.Marshal(task)
+	var task *gce.Task
+	for {
+		task, err = qService.Fetch(ctx, queue)
 		if err != nil {
-			logger.Println("Cannot marshal the task", task.InstanceName, "but can continue processing:", err.Error())
+			logger.Println("Cannot fetch any tasks:", err.Error())
+			return
+		} else if task == nil {
+			logger.Println("No tasks are found")
+			return
+		}
+
+		logger.Println("Recieved a task", task.Name, "from queue", queue)
+
+		// Store a given script into a file so that if this program will be stopped accidentaly,
+		// the given script won't be lost.
+		var raw []byte
+		raw, err = yaml.Marshal(task.Script)
+		if err != nil {
+			logger.Println("Cannot marshal the task", task.Name, "but can continue processing:", err.Error())
 		} else {
-			path := filepath.Join(ScriptDir, fmt.Sprintf("%s.yml", task.InstanceName))
+			path := filepath.Join(ScriptDir, fmt.Sprintf("%s.yml", task.Name))
 			err = ioutil.WriteFile(path, raw, 0644)
 			if err != nil {
-				logger.Println("Cannot store the task", task.InstanceName, "but can continue processing:", err.Error())
+				logger.Println("Cannot store the task", task.Name, "but can continue processing:", err.Error())
 			}
 		}
 
 		// Execute a script.
-		err = ExecuteScript(ctx, task, log.New(os.Stdout, fmt.Sprintf("task-%v:", task.InstanceName), 0))
+		err = ExecuteScript(ctx, task.Script, log.New(os.Stdout, fmt.Sprintf("task-%v:", task.Name), 0))
 		if err != nil {
-			logger.Println("Failed to execute task", task.InstanceName, ":", err.Error())
+			logger.Println("Failed to execute task", task.Name, ":", err.Error())
 		}
-		return
+		qService.DeleteTask(ctx, queue, task.Name)
 
-	})
-	if err != nil {
-		logger.Println("Failed executing tasks:", err.Error())
-		return
 	}
-
-	logger.Println("Finished all task in queue", queue)
-	return
 
 }
