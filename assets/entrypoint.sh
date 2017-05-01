@@ -51,7 +51,7 @@ unpack_tar(){
 
 {{range .Downloads}}
   echo "Downloading {{.Src}}"
-  if [[$(curl -I -H 'Accept-Encoding: gzip,deflate' {{.Src}} 2>/dev/null | grep "Content-Encoding" | grep "gzip" | wc -l) == 1]]; then
+  if [[ $(curl -I -H 'Accept-Encoding: gzip,deflate' {{.Src}} 2>/dev/null | grep "Content-Encoding" | grep "gzip" | wc -l) == 1 ]]; then
     curl -L -o /tmp/gzippedfile {{.Src}}
     gzip -dc /tmp/gzipppedfile > {{.Dest}}
   else

@@ -99,6 +99,9 @@ func newEntrypointOpt(s *script.Script) (opt *EntrypointOpt) {
 		}
 	}
 
+	// Set running commands.
+	opt.Run = s.Run
+
 	// Parse result and upload section
 	opt.Result = s.Result
 	if !strings.HasSuffix(opt.Result, "/") {

@@ -176,7 +176,6 @@ func run(project, queue string) (err error) {
 			logger.Println("Cannot fetch any tasks:", err.Error())
 			return
 		} else if task == nil {
-			logger.Println("No tasks are found")
 			return
 		}
 
