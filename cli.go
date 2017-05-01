@@ -79,7 +79,7 @@ func (cli *CLI) Run(args []string) int {
 		return ExitCodeOK
 	}
 
-	if flags.NArg() != 2 {
+	if flags.NArg() != 1 {
 		fmt.Println("Usage: roadie-queue-manager <queue-name>")
 		return ExitCodeError
 	}
