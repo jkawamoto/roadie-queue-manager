@@ -25,6 +25,7 @@ import (
 	"context"
 	"io/ioutil"
 	"net/http"
+	"strings"
 
 	"golang.org/x/net/context/ctxhttp"
 )
@@ -78,6 +79,10 @@ func Hostname(ctx context.Context) (string, error) {
 }
 
 // Zone returns the zone name this instance running in.
-func Zone(ctx context.Context) (string, error) {
-	return getMetadata(ctx, ZoneMetadataURL)
+func Zone(ctx context.Context) (zone string, err error) {
+	zone, err = getMetadata(ctx, ZoneMetadataURL)
+	if err == nil {
+		zone = zone[strings.LastIndex(zone, "/")+1:]
+	}
+	return
 }
