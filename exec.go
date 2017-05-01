@@ -60,7 +60,7 @@ func ExecuteScript(ctx context.Context, s *script.Script, logger *log.Logger) (e
 	defer cli.Close()
 
 	err = cli.Build(ctx, &roadie.DockerBuildOpt{
-		ImageName:  s.InstanceName,
+		ImageName:  s.Name,
 		Dockerfile: dockerfile,
 		Entrypoint: entrypoint,
 	})
@@ -68,7 +68,7 @@ func ExecuteScript(ctx context.Context, s *script.Script, logger *log.Logger) (e
 		return
 	}
 
-	err = cli.Start(ctx, s.InstanceName, nil)
+	err = cli.Start(ctx, s.Name, nil)
 	if err != nil {
 		return
 	}

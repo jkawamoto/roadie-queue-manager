@@ -32,7 +32,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/jkawamoto/roadie/cloud/gce"
+	"github.com/jkawamoto/roadie/cloud/gcp"
 	"github.com/jkawamoto/roadie/script"
 
 	yaml "gopkg.in/yaml.v2"
@@ -112,7 +112,7 @@ func run(project, queue string) (err error) {
 		}
 		instanceID := strings.Split(hostname, ".")[0]
 
-		cService := gce.NewComputeService(&gce.GcpConfig{
+		cService := gcp.NewComputeService(&gcp.Config{
 			Project: project,
 			Zone:    zone,
 		}, logger)
@@ -161,7 +161,7 @@ func run(project, queue string) (err error) {
 
 	// Start checking queue and executing each script.
 	logger.Println("Requesting a task from queue", queue)
-	qService, err := gce.NewQueueService(ctx, &gce.GcpConfig{
+	qService, err := gcp.NewQueueService(ctx, &gcp.Config{
 		Project: project,
 	}, logger)
 	if err != nil {
@@ -169,7 +169,7 @@ func run(project, queue string) (err error) {
 		return
 	}
 
-	var task *gce.Task
+	var task *gcp.Task
 	for {
 		task, err = qService.Fetch(ctx, queue)
 		if err != nil {
