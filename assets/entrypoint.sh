@@ -90,8 +90,9 @@ sh -c "{{.}}" > /tmp/stdout{{$index}}.txt
 {{end}}
 
 echo "Uploading stdouts"
-gsutil -m cp "/tmp/stdout*.txt" {{.Result}}
+{{$result := .Result}}
+gsutil -m cp "/tmp/stdout*.txt" {{$result}}
 {{range .Uploads}}
   echo "Uploading {{.}}"
-  gsutil -m cp "{{.}}" {{.Result}}
+  gsutil -m cp "{{.}}" {{$result}}
 {{end}}
