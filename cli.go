@@ -112,7 +112,6 @@ func run(project, queue string) (err error) {
 		}
 		instanceID := strings.Split(hostname, ".")[0]
 
-		logger.Println("Deleting instance", instanceID)
 		cService := gce.NewComputeService(&gce.GcpConfig{
 			Project: project,
 			Zone:    zone,
@@ -120,6 +119,7 @@ func run(project, queue string) (err error) {
 		err = cService.DeleteInstance(ctx, instanceID)
 		if err != nil {
 			logger.Println("Cannot stop instance", instanceID, ":", err.Error())
+			logger.Println("(project =", project, ", zone =", zone, ")")
 		}
 		return
 
