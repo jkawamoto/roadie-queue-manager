@@ -1,7 +1,7 @@
 #
 # Makefile
 #
-# Copyright (c) 2016 Junpei Kawamoto
+# Copyright (c) 2016-2017 Junpei Kawamoto
 #
 # This file is part of Roadie queue manager.
 #
@@ -19,21 +19,25 @@
 # along with Foobar.  If not, see <http:#www.gnu.org/licenses/>.
 #
 VERSION = snapshot
-
+.PHONY: build release get-deps test
 default: build
 
-.PHONY: build
-build:
-	goxc -d=pkg -pv=$(VERSION) -os="linux"
+asset: get-deps
+	rm -f assets/assets.go
+	go-bindata -pkg assets -o assets/assets.go -nometadata assets/*
 
-.PHONY: release
+build: asset
+	mkdir -p pkg/$(VERSION)/roadie-queue-manager_$(VERSION)_linux_amd64
+	GOOS=linux GOARCH=amd64 go build -o pkg/$(VERSION)/roadie-queue-manager_$(VERSION)_linux_amd64/roadie-queue-manager
+	cd pkg/$(VERSION) && tar -zcvf roadie-queue-manager_$(VERSION)_linux_amd64.tar.gz roadie-queue-manager_$(VERSION)_linux_amd64
+	rm -r pkg/$(VERSION)/roadie-queue-manager_$(VERSION)_linux_amd64
+
 release:
-	ghr -u jkawamoto  v$(VERSION) pkg/$(VERSION)
+	ghr -u jkawamoto v$(VERSION) pkg/$(VERSION)
 
-.PHONY: get-deps
 get-deps:
 	go get -d -t -v .
+	go get -u github.com/jteeuwen/go-bindata/...
 
-.PHONY: test
 test:
 	go test -v ./...
