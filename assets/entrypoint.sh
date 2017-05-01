@@ -84,6 +84,7 @@ if [[ -e requirements.txt ]]; then
 fi
 
 export LC_ALL=C
+echo "Running commands in run section"
 {{range $index, $elements := .Run}}
 echo "{{.}}"
 sh -c "{{.}}" > /tmp/stdout{{$index}}.txt
