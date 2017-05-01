@@ -16,122 +16,42 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with Foobar.  If not, see <http://www.gnu.org/licenses/>.
+// along with Roadie queue manager. If not, see <http://www.gnu.org/licenses/>.
 //
 
 package main
 
 import (
 	"fmt"
-	"os/exec"
 	"strings"
 	"testing"
+
+	"github.com/jkawamoto/roadie/script"
 )
 
-// Test to obtain a container ID.
-func TestGetID(t *testing.T) {
+func TestDockerfile(t *testing.T) {
 
-	containerName := "sample-container-name"
-	containerID := "ABCDEFG"
-
-	var (
-		docker *Docker
-		res    string
-		err    error
-	)
-
-	// Test for existing container.
-	docker = &Docker{
-
-		command: func(name string, args ...string) *exec.Cmd {
-
-			cmd := name + " " + strings.Join(args, " ")
-			expected := fmt.Sprintf("docker ps -aq -f name=%s", containerName)
-			if cmd != expected {
-				t.Error("Generated command isn't correct:", cmd)
-			}
-
-			return exec.Command("echo", containerID)
-
+	s := &script.Script{
+		APT: []string{
+			"package1",
+			"package2",
 		},
 	}
 
-	res, err = docker.GetID(containerName)
+	buf, err := Dockerfile(s)
 	if err != nil {
 		t.Fatal(err.Error())
 	}
-	if res != containerID {
-		t.Error("GetID to an existing container returns a wrong container ID:", res)
+	res := string(buf)
+
+	if !strings.Contains(res, fmt.Sprintf("FROM %v", DefaultImage)) {
+		t.Error("Created Dockerfile doesn't use the correct base image")
 	}
-
-	// Test for non existing container.
-	docker = &Docker{
-		command: func(name string, args ...string) *exec.Cmd {
-			return exec.Command("echo")
-		},
+	if !strings.Contains(res, "apt-get install -y package1") {
+		t.Error("Created Dockerfile doesn't install package1")
 	}
-
-	res, err = docker.GetID(containerName)
-	if err != nil {
-		t.Fatal(err.Error())
-	}
-	if len(res) != 0 {
-		t.Error("GetID to non existing container returns a wrong container ID:", res)
-	}
-
-}
-
-// Test to create a container.
-func TestCreateContainer(t *testing.T) {
-
-	image := "jkawamoto/roadie-gcp"
-	containerName := "sample-container"
-	script := `sample
-  script
-  `
-
-	docker := &Docker{
-
-		command: func(name string, args ...string) *exec.Cmd {
-
-			cmd := name + " " + strings.Join(args, " ")
-			expected := fmt.Sprintf("docker run -i --name %s %s --no-shutdown", containerName, image)
-			if cmd != expected {
-				t.Error("Generated command isn't correct:", cmd)
-			}
-
-			return exec.Command("echo", fmt.Sprintf("\"%s\"", string(script)))
-
-		},
-	}
-
-	if err := docker.CreateContainer(image, containerName, []byte(script)); err != nil {
-		t.Error("CreateContainer returns an error:", err.Error())
-	}
-
-}
-
-// Test to delete a container.
-func TestDeleteContainer(t *testing.T) {
-
-	containerID := "ABCDEFG"
-	docker := &Docker{
-
-		command: func(name string, args ...string) *exec.Cmd {
-
-			cmd := name + " " + strings.Join(args, " ")
-			expected := fmt.Sprintf("docker rm -f %s", containerID)
-			if cmd != expected {
-				t.Error("Generated command isn't correct:", cmd)
-			}
-
-			return exec.Command("echo", containerID)
-
-		},
-	}
-
-	if err := docker.DeleteContainer(containerID); err != nil {
-		t.Error("DeleteContainer returns an error:", err.Error())
+	if !strings.Contains(res, "apt-get install -y package2") {
+		t.Error("Created Dockerfile doesn't install package2")
 	}
 
 }

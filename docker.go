@@ -16,120 +16,80 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with Foobar.  If not, see <http://www.gnu.org/licenses/>.
+// along with Roadie queue manager. If not, see <http://www.gnu.org/licenses/>.
 //
 
 package main
 
 import (
-	"bufio"
-	"fmt"
-	"io"
-	"os"
-	"os/exec"
-	"strings"
+	"bytes"
+	"text/template"
+
+	"github.com/jkawamoto/roadie-queue-manager/assets"
+	"github.com/jkawamoto/roadie/script"
 )
 
-// commandExecutor is a type of function takes command name and arguments,
-// and returns a pointer of exec.Cmd to be run a command.
-type commandExecutor func(string, ...string) *exec.Cmd
+const (
+	// DefaultImage defines the default base image.
+	DefaultImage = "ubuntu:latest"
+)
 
-// Docker defines an inteface of docker API.
-type Docker struct {
-	// Command executor which will be used to run any command in this class.
-	command commandExecutor
-}
+// loadTemplate loads a template from assets and apply given options.
+func loadTemplate(name string, opt interface{}) (res []byte, err error) {
 
-// NewDocker returns a new docker interface.
-func NewDocker() *Docker {
-	// Default command executor is `exec.Command`.
-	return &Docker{
-		command: exec.Command,
-	}
-}
-
-// GetID returns the ID associated with a given container name.
-func (docker *Docker) GetID(name string) (res string, err error) {
-
-	// docker ps -aq -f name=<name>
-	cmd := docker.command("docker", "ps", "-aq", "-f", fmt.Sprintf("name=%s", name))
-	stderr, err := cmd.StderrPipe()
-	if err != nil {
-		return
-	}
-	go func() {
-		io.Copy(os.Stderr, stderr)
-	}()
-
-	buf, err := cmd.Output()
+	data, err := assets.Asset(name)
 	if err != nil {
 		return
 	}
 
-	res = strings.TrimRight(string(buf), "\n")
+	temp, err := template.New("").Parse(string(data))
+	if err != nil {
+		return
+	}
+
+	buf := bytes.NewBuffer(nil)
+	err = temp.Execute(buf, opt)
+	if err != nil {
+		return
+	}
+
+	res = buf.Bytes()
 	return
 
 }
 
-// CreateContainer creates a container based on a given image. The container will
-// have a given name and receive a given script.
-// This function will block when the container ends.
-func (docker *Docker) CreateContainer(image, name string, script []byte) (err error) {
+// Dockerfile creates a new Dockerfile for a given script.
+func Dockerfile(s *script.Script) (res []byte, err error) {
 
-	// docker run -i --name <name> <image> --no-shutdown
-	cmd := docker.command("docker", "run", "-i", "--name", name, image, "--no-shutdown")
-	stdin, err := cmd.StdinPipe()
-	if err != nil {
-		return
+	if s.Image == "" {
+		s.Image = DefaultImage
 	}
-
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		return
-	}
-	go func() {
-		io.Copy(os.Stdout, stdout)
-	}()
-
-	stderr, err := cmd.StderrPipe()
-	if err != nil {
-		return
-	}
-	go func() {
-		io.Copy(os.Stderr, stderr)
-	}()
-
-	writer := bufio.NewWriter(stdin)
-
-	err = cmd.Start()
-	if err != nil {
-		return
-	}
-
-	_, err = writer.Write(script)
-	if err != nil {
-		return
-	}
-	err = writer.Flush()
-	if err != nil {
-		return
-	}
-	err = stdin.Close()
-	if err != nil {
-		return
-	}
-
-	return cmd.Wait()
+	return loadTemplate("assets/Dockerfile", s)
 
 }
 
-// DeleteContainer deletes a container associated with a given ID or name.
-func (docker *Docker) DeleteContainer(id string) (err error) {
+// DownloadOpt defines a download option for a URL.
+type DownloadOpt struct {
+	Src   string
+	Dest  string
+	Zip   bool
+	TarGz bool
+	Tar   bool
+}
 
-	// docker run -f <id>
-	cmd := docker.command("docker", "rm", "-f", id)
-	output, err := cmd.Output()
-	os.Stdout.Write(output)
-	return err
+// EntrypointOpt defines options to create an entrypoint.sh.
+type EntrypointOpt struct {
+	Git       string
+	Downloads []DownloadOpt
+	GSFiles   []DownloadOpt
+	Run       []string
+	Result    string
+	Uploads   []string
+}
+
+// Entrypoint creates a new entrypoint.sh with a given set of options.
+func Entrypoint(opt *EntrypointOpt) (res []byte, err error) {
+
+	return loadTemplate("assets/entrypoint.sh", opt)
 
 }
