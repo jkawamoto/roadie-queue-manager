@@ -16,7 +16,7 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with Foobar.  If not, see <http://www.gnu.org/licenses/>.
+// along with Roadie queue manager. If not, see <http://www.gnu.org/licenses/>.
 //
 
 package main
@@ -27,12 +27,14 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"log"
 	"os"
 	"path/filepath"
 
-	yaml "gopkg.in/yaml.v2"
+	"github.com/jkawamoto/roadie/cloud/gce"
+	"github.com/jkawamoto/roadie/script"
 
-	"github.com/jkawamoto/roadie/command/resource"
+	yaml "gopkg.in/yaml.v2"
 )
 
 // Exit codes are int values that represent an exit code for a particular error.
@@ -44,7 +46,7 @@ const (
 	TimeFormat = "2006-01-02T15:04:05"
 
 	// ScriptDir is the directory downloaded script file are stored.
-	ScriptDir = "script"
+	ScriptDir = "/root"
 )
 
 // CLI is the command line object
@@ -78,130 +80,105 @@ func (cli *CLI) Run(args []string) int {
 	}
 
 	if flags.NArg() != 2 {
-		fmt.Println("Usage: roadie-queue-manager <project-ID> <queue-name>")
+		fmt.Println("Usage: roadie-queue-manager <queue-name>")
 		return ExitCodeError
 	}
 
-	if err := run(flags.Arg(0), flags.Arg(1)); err != nil {
+	if err := run(flags.Arg(0)); err != nil {
 		fmt.Println(err.Error())
 		return ExitCodeError
 	}
 	return ExitCodeOK
 }
 
-func run(project, queue string) (err error) {
-
-	// Prepare the directory to store downloaded script files.
-	err = os.MkdirAll(ScriptDir, 0755)
-	if err != nil {
-		return
-	}
+func run(queue string) (err error) {
+	logger := log.New(os.Stdout, "", 0)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	// Docker accessor.
-	docker := NewDocker()
+	projectID, err := ProjectID(ctx)
+	if err != nil {
+		return
+	}
+
+	defer func() (err error) {
+		instanceID, err := InstanceID(ctx)
+		if err != nil {
+			return
+		}
+
+		logger.Println("Deleting instance", instanceID)
+		cService := gce.NewComputeService(&gce.GcpConfig{
+			Project: projectID,
+		}, logger)
+		// The context used in this function may be canceled when the following defer
+		// function is called; a new background context is thereby used here.
+		return cService.DeleteInstance(context.Background(), instanceID)
+	}()
 
 	// Check a script file exists.
 	// If there are script files, it measn VM was restarted during the run.
 	// The script file must be restarted.
 	matches, err := filepath.Glob(filepath.Join(ScriptDir, "*.yml"))
 	if err != nil {
-		return
-	}
-	for _, file := range matches {
-		err = executeScript(docker, file)
-		if err != nil {
-			return
+		logger.Println("Failed retrieving unfinished tasks:", err.Error())
+
+	} else {
+
+		for _, filename := range matches {
+			logger.Println("Find an unfinished task", filename, "and run it again")
+
+			var s *script.Script
+			s, err = script.NewScript(filename)
+			if err != nil {
+				logger.Println("Cannot read", filename, "and skip it:", err.Error())
+				continue
+			}
+
+			err = ExecuteScript(ctx, s, logger)
+			if err != nil {
+				logger.Println("Cannot finish task", filename, ":", err.Error())
+				continue
+			}
+			os.Remove(filename)
+
 		}
+
 	}
 
 	// Start checking queue and executing each script.
-	for {
+	err = RecieveTask(ctx, projectID, queue, func(task *script.Script) (err error) {
+		logger.Println("Recieved a task", task.InstanceName, "from queue", queue)
 
-		//File path to be run.
-		var path string
-
-		// Obtain a next script.
-		err = NextScript(ctx, project, queue, func(task *resource.Task) (err error) {
-			// This handler stores a given script into a file
-			// so that if this program will be stopped accidentaly,
-			// the given script won't be lost.
-			raw, err := yaml.Marshal(task)
+		// This handler stores a given script into a file
+		// so that if this program will be stopped accidentaly,
+		// the given script won't be lost.
+		raw, err := yaml.Marshal(task)
+		if err != nil {
+			logger.Println("Cannot marshal the task", task.InstanceName, "but can continue processing:", err.Error())
+		} else {
+			path := filepath.Join(ScriptDir, fmt.Sprintf("%s.yml", task.InstanceName))
+			err = ioutil.WriteFile(path, raw, 0644)
 			if err != nil {
-				return
+				logger.Println("Cannot store the task", task.InstanceName, "but can continue processing:", err.Error())
 			}
-			path = filepath.Join(ScriptDir, fmt.Sprintf("%s.yml", task.InstanceName))
-			return ioutil.WriteFile(path, raw, 0644)
-
-		})
-
-		if err == NoScript {
-			break
-		} else if err != nil {
-			return err
 		}
 
 		// Execute a script.
-		err = executeScript(docker, path)
+		err = ExecuteScript(ctx, task, log.New(os.Stdout, fmt.Sprintf("task-%v:", task.InstanceName), 0))
 		if err != nil {
-			return err
+			logger.Println("Failed to execute task", task.InstanceName, ":", err.Error())
 		}
+		return
 
-	}
-
-	return nil
-
-}
-
-// DockerRequester defines necessary methods to access to docker.
-type DockerRequester interface {
-	GetID(name string) (res string, err error)
-	CreateContainer(image, name string, script []byte) error
-	DeleteContainer(id string) error
-}
-
-// executeScript runs a given script via a given docker interface.
-// When the script ends without errors, the script file will be deleted.
-func executeScript(docker DockerRequester, file string) (err error) {
-
-	// Parse the script.
-	raw, err := ioutil.ReadFile(file)
+	})
 	if err != nil {
+		logger.Println("Failed executing tasks:", err.Error())
 		return
 	}
 
-	var script resource.Task
-	err = yaml.Unmarshal(raw, &script)
-	if err != nil {
-		return
-	}
-
-	// Check a previous container exists.
-	id, err := docker.GetID(script.InstanceName)
-	if err != nil {
-		return
-	}
-	if len(id) != 0 {
-		// If samne name container exists, delete it.
-		err = docker.DeleteContainer(id)
-		if err != nil {
-			return
-		}
-	}
-
-	// Start a new container.
-	body, err := yaml.Marshal(&script.Body)
-	if err != nil {
-		return
-	}
-	err = docker.CreateContainer(script.Image, script.InstanceName, body)
-	if err != nil {
-		return
-	}
-
-	// Delete the script file.
-	return os.Remove(file)
+	logger.Println("Finished all task in queue", queue)
+	return
 
 }
