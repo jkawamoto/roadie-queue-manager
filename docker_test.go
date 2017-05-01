@@ -55,3 +55,43 @@ func TestDockerfile(t *testing.T) {
 	}
 
 }
+
+func TestEntrypoint(t *testing.T) {
+
+	data, err := Entrypoint(&EntrypointOpt{
+		Git: "https://github.com/jkawamoto/roadie-queue-manager.git",
+		Downloads: []DownloadOpt{
+			DownloadOpt{
+				Src:  "download-src",
+				Dest: "download-dest",
+			},
+		},
+		GSFiles: []DownloadOpt{},
+		Run: []string{
+			"cmd1",
+		},
+		Result: "gs://somebucket/",
+		Uploads: []string{
+			"result1",
+		},
+	})
+	if err != nil {
+		t.Error(err.Error())
+	}
+
+	entrypoint := string(data)
+	if !strings.Contains(entrypoint, "git clone https://github.com/jkawamoto/roadie-queue-manager.git .") {
+		t.Error("Entrypoint doesn't have a correct git repository")
+	}
+	if !strings.Contains(entrypoint, "curl -L -o download-dest download-src") {
+		t.Error("Entrypint doesn't have a correct download")
+	}
+	if !strings.Contains(entrypoint, `sh -c "cmd1" > /tmp/stdout0.txt`) {
+		t.Error("Entrypoint doesn't have a correct command")
+	}
+	if !strings.Contains(entrypoint, `gsutil -m cp "/tmp/stdout*.txt" gs://somebucket/`) {
+		t.Error("Entrypoint doesn't have correct uploading")
+	}
+	t.Log(string(data))
+
+}
