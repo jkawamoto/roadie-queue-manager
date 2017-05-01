@@ -29,8 +29,8 @@ ENV DEBIAN_FRONTEND noninteractive
 
 # Install necessary packages
 RUN apt-get update && \
-    apt-get install -y apt-utils curl git gcc python-dev libffi-dev python-pip
-RUN pip install -U pip gsutil
+    apt-get install -y apt-utils curl git gcc python-dev python-setuptools libssl-dev libffi-dev python-pip unzip
+RUN pip install -U pip pycrypto pyOpenSSL crcmod gsutil
 RUN echo "[GoogleCompute]\nservice_account = default\n[GSUtil]\nparallel_composite_upload_threshold = 150M" >> /etc/boto.cfg
 
 # Install apt packages specified in the script file to be run.
