@@ -9,11 +9,11 @@ A helper tool of Roadie to execute your scripts with a queue.
 ## Description
 Roadie Queue Manager is a helper tool of [Roadie](https://jkawamoto.github.io/roadie/).
 This tool checks a queue implemented on [Google Cloud Datastore](https://cloud.google.com/datastore/)
-and executes scripts pushed to the queue by [Roadie-GCP](http://jkawamoto.github.io/roadie-gcp/) container.
+and executes scripts enqueued in the queue.
 
 ## Usage
 ```
-roadie-queue-manager <project ID> <queue name>
+$ roadie-queue-manager <project ID> <queue name>
 ```
 
 ## License

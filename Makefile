@@ -32,7 +32,7 @@ build: asset
 	cd pkg/$(VERSION) && tar -zcvf roadie-queue-manager_$(VERSION)_linux_amd64.tar.gz roadie-queue-manager_$(VERSION)_linux_amd64
 	rm -r pkg/$(VERSION)/roadie-queue-manager_$(VERSION)_linux_amd64
 
-release:
+release: build
 	ghr -u jkawamoto v$(VERSION) pkg/$(VERSION)
 
 get-deps:
