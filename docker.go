@@ -31,7 +31,7 @@ import (
 
 const (
 	// DefaultImage defines the default base image.
-	DefaultImage = "ubuntu:latest"
+	DefaultImage = "jkawamoto/roadie-queue-manager:latest"
 )
 
 // loadTemplate loads a template from assets and apply given options.

@@ -18,21 +18,16 @@
 # You should have received a copy of the GNU General Public License
 # along with Roadie queue manager. If not, see <http://www.gnu.org/licenses/>.
 #
-
-# This template is a dockerfile which installs apt packages.
-#
-FROM {{.Image}}
+FROM ubuntu:latest
 MAINTAINER Junpei Kawamoto <kawamoto.junpei@gmail.com>
 
-# Install apt packages specified in the script file to be run.
-{{with .APT}}
-RUN apt-get update
-{{range .}}
-RUN apt-get install -y {{.}}
-{{end}}
-{{end}}
+ENV TERM vt100
+ENV DEBIAN_FRONTEND noninteractive
 
-WORKDIR /data
-ADD .roadie/entrypoint.sh /root/entrypoint.sh
-ENTRYPOINT ["bash", "/root/entrypoint.sh"]
-CMD [""]
+# Install necessary packages
+RUN apt-get update && \
+    apt-get install -y apt-utils curl git gcc python-dev python-setuptools libssl-dev libffi-dev python-pip unzip && \
+    apt-get clean && \
+    rm -rf /var/cache/apt/archives/* /var/lib/apt/lists/
+RUN pip install -U pip pycrypto pyOpenSSL crcmod gsutil
+RUN echo "[GoogleCompute]\nservice_account = default\n[GSUtil]\nparallel_composite_upload_threshold = 150M" >> /etc/boto.cfg

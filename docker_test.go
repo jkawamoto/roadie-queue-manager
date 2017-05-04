@@ -47,11 +47,33 @@ func TestDockerfile(t *testing.T) {
 	if !strings.Contains(res, fmt.Sprintf("FROM %v", DefaultImage)) {
 		t.Error("Created Dockerfile doesn't use the correct base image")
 	}
+	if !strings.Contains(res, "apt-get update") {
+		t.Error("Created Dockerfile doesn't update an apt package list")
+	}
 	if !strings.Contains(res, "apt-get install -y package1") {
 		t.Error("Created Dockerfile doesn't install package1")
 	}
 	if !strings.Contains(res, "apt-get install -y package2") {
 		t.Error("Created Dockerfile doesn't install package2")
+	}
+
+}
+
+func TestDockerfileWithoutApt(t *testing.T) {
+
+	s := &script.Script{}
+
+	buf, err := Dockerfile(s)
+	if err != nil {
+		t.Fatal(err.Error())
+	}
+	res := string(buf)
+
+	if !strings.Contains(res, fmt.Sprintf("FROM %v", DefaultImage)) {
+		t.Error("Created Dockerfile doesn't use the correct base image")
+	}
+	if strings.Contains(res, "apt-get update") {
+		t.Error("Created Dockerfile shouldn't update an apt package list")
 	}
 
 }
