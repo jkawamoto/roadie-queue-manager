@@ -25,4 +25,4 @@ package main
 const Name string = "roadie-queue-manager"
 
 // Version of this command.
-const Version string = "0.2.2"
+const Version string = "0.2.3"
