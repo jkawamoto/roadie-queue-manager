@@ -1,3 +1,7 @@
+## 0.2.3 (2017-06-20)
+### Fixed
+- Accidentally evaluate files after they are decompressed
+
 ## 0.2.2 (2017-05-04)
 ### Update
 - Use a pre-built image to reduce running time
@@ -18,11 +22,9 @@
 ### Update
 - For the new roadie's queue APIs.
 
-
 ## 0.1.1 (2016-09-19)
 ### Fixed
 - A non checking error when not existing queue names is passed.
-
 
 ## 0.1.0 (2016-09-19)
 Initial release

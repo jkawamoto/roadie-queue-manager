@@ -34,13 +34,13 @@ extract_zip(){
 
 unpack_targz(){
   echo "Unpacking $1"
-  $(cd $(dirname $1) && tar -zxvf $1)
+  (cd $(dirname $1) && tar -zxvf $1)
   rm $1
 }
 
 unpack_tar(){
   echo "Unpacking $1"
-  $(cd $(dirname $1) && tar -xvf $1)
+  (cd $(dirname $1) && tar -xvf $1)
   rm $1
 }
 
