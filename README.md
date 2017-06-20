@@ -12,7 +12,7 @@ This tool checks a queue implemented on [Google Cloud Datastore](https://cloud.g
 and executes scripts enqueued in the queue.
 
 ## Usage
-```
+```shell
 $ roadie-queue-manager <project ID> <queue name>
 ```
 

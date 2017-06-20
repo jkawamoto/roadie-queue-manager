@@ -18,7 +18,7 @@
 # You should have received a copy of the GNU General Public License
 # along with Foobar.  If not, see <http:#www.gnu.org/licenses/>.
 #
-VERSION = snapshot
+VERSION := $(subst v,,$(shell git describe --abbrev=0 --tags))
 .PHONY: build release get-deps test
 default: build
 
@@ -26,7 +26,7 @@ asset: get-deps
 	rm -f assets/assets.go
 	go-bindata -pkg assets -o assets/assets.go -nometadata assets/*
 
-build: asset
+build: asset test
 	mkdir -p pkg/$(VERSION)/roadie-queue-manager_$(VERSION)_linux_amd64
 	GOOS=linux GOARCH=amd64 go build -o pkg/$(VERSION)/roadie-queue-manager_$(VERSION)_linux_amd64/roadie-queue-manager
 	cd pkg/$(VERSION) && tar -zcvf roadie-queue-manager_$(VERSION)_linux_amd64.tar.gz roadie-queue-manager_$(VERSION)_linux_amd64
